@@ -1,151 +1,6 @@
-#include <fstream>
-#include <iostream>
-#include <vector>
-#include <algorithm>
-#include <map>
-#include <queue>
-#include <set>
-#include <string>
-#include <unordered_set>
-#include <unordered_map>
-#include <chrono>
+#pragma once
+#include "DataStructs.h"
 
-class FrameTimer
-{
-public:
-	FrameTimer()
-	{
-		last = std::chrono::steady_clock::now();
-	}
-	float Mark()
-	{
-		const auto old = last;
-		last = std::chrono::steady_clock::now();
-		const std::chrono::duration<float> frameTime = last - old;
-		return frameTime.count();
-	}
-private:
-	std::chrono::steady_clock::time_point last;
-};
-struct Pos
-{
-	int x=0;
-	int y=0;
-	friend bool operator==(const Pos& p1, const Pos& p2)
-	{
-		return (p1.x == p2.x) && (p1.y == p2.y);
-	}
-	friend bool operator<(const Pos& p1, const Pos& p2)
-	{
-		return (p1.x + p1.y) < (p2.x + p2.y);
-	}
-};
-struct Pawn
-{
-	Pos pos = { 0,0 };
-	int nSteps = 0;
-	std::string keyPath;
-	unsigned int keyring = 0b0;
-};
-struct Field
-{
-	int fieldID = 0;
-	int fieldWidth = 0;
-	int fieldHeight = 0;
-	int nKeys = 0;
-	unsigned int fullKeyring = 0;
-	std::string allKeys;
-	std::vector<char> charVec;
-	Pawn startPos;
-};
-struct KeyBit
-{
-	KeyBit()
-	{
-		for (int i = 0; i < 26; i++)
-		{
-			unsigned int mash = (0b01 << i);
-			keyBitcodes[i + 'a'] = mash;
-		}
-	}
-	std::map<char, unsigned int> keyBitcodes;
-};
-struct BitPos
-{
-	unsigned long long int pos = 0;
-	int nSteps = 0;
-	//std::string path;
-	friend bool operator==(const BitPos& p1, const BitPos& p2)
-	{
-		return (p1.pos == p2.pos);
-	}
-	friend bool operator<(const BitPos& p1, const BitPos& p2)
-	{
-		return p1.pos < p2.pos;
-	}
-};
-template <typename E>
-std::string ToBin(E n, int min_digits = 0)
-{
-	std::string bin_str;
-	for (int count = 0; n != 0 || count < min_digits; n >>= 1, count++)
-	{
-		bin_str.push_back(bool(n & 0b1) ? '1' : '0');
-	}
-	std::reverse(bin_str.begin(), bin_str.end());
-	return bin_str;
-}
-void Print(unsigned long long int pawn, const Field& field)
-{
-	std::cout << "pawn 64bit: " << '\n';
-	std::cout << ToBin(pawn, 64) << '\n';
-	std::cout << "keys: " << '\n';
-	unsigned int keys = pawn;
-	std::cout << ToBin(keys, 32) << '\n';
-	std::cout << "Position: " << '\n';
-	unsigned short posIndex = pawn >> 32;
-	int y = posIndex / field.fieldWidth;
-	int x = posIndex % field.fieldWidth;
-	std::cout << ToBin(posIndex, 16) << '\n';
-	std::cout << "x=" << x << ", y=" << y << '\n';
-	std::cout << "Stepcount: " << '\n';
-	unsigned short nSteps = pawn >> 48;
-	std::cout << ToBin(nSteps, 16) << '\n';
-	std::cout << "n=" << nSteps << "\n\n";
-}
-void Print(std::queue<unsigned long long int> queue, Field field)
-{
-	while (!queue.empty())
-	{
-
-		unsigned short qpos = (queue.front() << 16) >> 48;
-		queue.pop();
-		field.charVec[qpos] = '$';
-	}
-	for (int i = 0; i < field.fieldWidth * field.fieldHeight; i++)
-	{
-		std::cout << field.charVec[i];
-		if (i!=0 && ((i+1) % (field.fieldWidth) == 0)) std::cout << '\n';
-	}
-}
-std::string Hash(const Pawn& pawn)
-{
-	std::string str;
-	str += std::to_string(pawn.pos.x);
-	str += '_';
-	str += std::to_string(pawn.pos.y);
-	str += '_';
-	str += std::to_string(pawn.keyring);
-	return str;
-}
-bool IsKey(char c)
-{
-	return (c > 96 && c <= 122);
-}
-bool IsDoor(char c)
-{
-	return (c > 64 && c <= 90);
-}
 void LoadField(const std::string filename, Field& field)
 {
 	std::ifstream in(filename);
@@ -173,9 +28,9 @@ void LoadField(const std::string filename, Field& field)
 				}
 				else if (ch == '@')
 				{
-					int Y = i / field.fieldWidth;
-					int X = i - Y * field.fieldWidth;
-					field.startPos = { X,Y,0b0 };
+					//int Y = i / field.fieldWidth;
+					//int X = i - Y * field.fieldWidth;
+					field.startIndex = (unsigned short)i;
 				}
 				field.charVec.push_back(ch);
 				i++;
@@ -185,50 +40,14 @@ void LoadField(const std::string filename, Field& field)
 	field.fieldHeight = field.charVec.size() / field.fieldWidth;
 	std::sort(field.allKeys.begin(), field.allKeys.end());
 	field.nKeys = field.allKeys.size();
-	KeyBit kb;
 	for (char c : field.allKeys)
 	{
-		field.fullKeyring |= kb.keyBitcodes[c];
+		field.fullKeyring |= (0b1 << (c - 'a'));
 	}
+	field.startGridBitPos = { (((unsigned long long int)field.startIndex) << 32) , 0 } ;
+	//field.startKeyBitPos = { (field.startGridBitPos.pos | (0b1 << 26)) , 0 };
+	field.startKeyBitPos = { (field.startGridBitPos.pos ) , 0 };
 	return;
-}
-std::vector<Pawn> GetNeighbors(const Pawn& pawn, const Field& field, std::unordered_set<std::string>& visited)
-{
-	if (visited.find(Hash(pawn)) == visited.end()) return {};
-	static KeyBit kb;
-	std::vector<Pos> neighbors;
-	if (pawn.pos.x > 0)						neighbors.push_back({ pawn.pos.x - 1,pawn.pos.y		});
-	if (pawn.pos.x < field.fieldWidth-1)	neighbors.push_back({ pawn.pos.x + 1,pawn.pos.y		});
-	if (pawn.pos.y > 0)						neighbors.push_back({ pawn.pos.x    ,pawn.pos.y-1	});
-	if (pawn.pos.y < field.fieldHeight-1)	neighbors.push_back({ pawn.pos.x    ,pawn.pos.y+1	});
-	std::vector<Pawn> returnVec;
-	for (Pos n : neighbors)
-	{
-		char fieldChar = field.charVec[n.y * field.fieldWidth + n.x];
-		if (fieldChar != '#')
-		{
-			if (fieldChar == '.' || fieldChar == '@')
-			{
-				returnVec.push_back({ n,pawn.nSteps+1,pawn.keyPath,pawn.keyring });
-			}
-			else if (IsKey(fieldChar))
-			{
-				if (kb.keyBitcodes[fieldChar] & pawn.keyring)
-				{
-					returnVec.push_back({ n,pawn.nSteps + 1,pawn.keyPath,pawn.keyring });
-				}
-				else
-				{
-					returnVec.push_back({ n,pawn.nSteps + 1,pawn.keyPath + fieldChar,pawn.keyring | kb.keyBitcodes[tolower(fieldChar)] });
-				}
-			}
-			else if (IsDoor(fieldChar) && (pawn.keyring & kb.keyBitcodes[tolower(fieldChar)]))
-			{
-				returnVec.push_back({ n,pawn.nSteps+1,pawn.keyPath,pawn.keyring });
-			}
-		}
-	}
-	return returnVec;
 }
 std::vector<BitPos> GetNeighbors(BitPos& currBitPos, const Field& field, std::unordered_set<unsigned long long int>& visited)
 {
@@ -274,59 +93,60 @@ std::vector<BitPos> GetNeighbors(BitPos& currBitPos, const Field& field, std::un
 				}
 				unsigned long long int newBitPos = nbor;
 				newBitPos = (newBitPos << 32) | keys;
-				if (visited.find(newBitPos) == visited.end()) returnVec.push_back({ newBitPos, currBitPos.nSteps+1}); // spawn
+				if (visited.find(newBitPos) == visited.end()) returnVec.push_back({ newBitPos, (unsigned short)(currBitPos.nSteps+1)}); // spawn
 			}
 		}
 	}
 	return returnVec;
 }
-std::pair<int,std::string> mazeBFS(const Field& field)
+std::vector<BitPos> GetNeighboringKeys(BitPos& startKey, const Field& field, std::unordered_set<unsigned long long int>& visited)
 {
-	std::queue<Pawn> queue;
-	std::unordered_set<std::string> visited;
-	queue.push(field.startPos);
-	visited.emplace(Hash(field.startPos));
+	std::queue<BitPos> queue;
+	queue.push(startKey);
+	visited.emplace(startKey.pos);
+	std::vector<BitPos> returnVec;
 	while (!queue.empty())
 	{
-		Pawn currP = queue.front(); queue.pop();
-		auto neighbors = GetNeighbors(currP, field,visited);
-		for (Pawn p : neighbors)
+		BitPos currKey = queue.front(); queue.pop();
+		//std::cout << "Currrent position under evaluation (neighbor call is next):\n"; Print(currP, field);
+		auto neighbors = GetNeighbors(currKey, field, visited);
+		for (BitPos newBitPos : neighbors)
 		{
-			if (visited.find(Hash(p)) == visited.end())
+			//Print(p,field);
+			if (visited.find(newBitPos.pos) == visited.end())
 			{
-				if (p.keyring == field.fullKeyring)
+				if ( (newBitPos.pos<<32)>>32 != (startKey.pos<<32)>>32 )
 				{
-					return { p.nSteps,p.keyPath };
+
+					char newkey = field.charVec[(unsigned short)(newBitPos.pos>>32)];
+					std::vector<char> newpath = newBitPos.path; newpath.push_back(newkey);
+					//newBitPos.pos <<= 32; newBitPos.pos >>= 32;
+					//newBitPos.pos |= (unsigned long long int(0b1) << (newkey - 'a')) << 32;
+					returnVec.push_back({ newBitPos.pos,newBitPos.nSteps,newpath});
 				}
 				else
 				{
-					queue.push(p);
-					visited.emplace(Hash(p));
+					queue.push(newBitPos);
+					visited.emplace(newBitPos.pos);
+					//visited.emplace(newBitPos.pos | ((long long int(newBitPos.nSteps)) << 48));
 				}
 			}
 		}
 	}
-	return { -1,"error" };
+	return returnVec;
 }
 std::pair<unsigned short, std::string> mazeBFS_(const Field& field)
 {
-	
 	std::queue<BitPos> queue;
 	std::unordered_set<unsigned long long int> visited;
-	BitPos bitPos;
-	unsigned long long int startIndex = (long long int)field.startPos.pos.y * (long long int)field.fieldWidth + (long long int)field.startPos.pos.x;
-	bitPos.pos = (startIndex << 32);
-	queue.push(bitPos);
-	visited.emplace(bitPos.pos);
+	queue.push(field.startGridBitPos);
+	visited.emplace(field.startGridBitPos.pos);
 	while (!queue.empty())
 	{
-		//Print(queue, field);
 		BitPos currBitPos = queue.front(); queue.pop();
-		//std::cout << "Currrent position under evaluation (neighbor call is next):\n"; Print(currP, field);
 		auto neighbors = GetNeighbors(currBitPos, field, visited);
 		for (BitPos newBitPos : neighbors)
 		{
-			//Print(p,field);
 			if (visited.find(newBitPos.pos) == visited.end())
 			{
 				if (unsigned int((newBitPos.pos<<32)>>32) == field.fullKeyring)
@@ -343,6 +163,78 @@ std::pair<unsigned short, std::string> mazeBFS_(const Field& field)
 	}
 	return { -1,"error!" };
 }
+struct GroterePadKosten
+{
+	// Dit is een compare function die gebruikt wordt voor het sorteren (prioriteren) in de priority_map class voor de toepassing 
+	// in het Dijkstra algorithme
+	bool operator()(const std::vector<BitPos>& lhs, const std::vector<BitPos>& rhs) const
+	{
+		return lhs.back().nSteps > rhs.back().nSteps;
+	}
+};
+std::vector<BitPos> FindShortestPath(Field& field,bool debugMode)
+{
+	//auto cmp = [](std::vector<BitPos> left, std::vector<BitPos> right) {return left.back().nSteps > right.back().nSteps; };
+	//std::priority_queue<std::vector<BitPos>, std::vector<std::vector<BitPos>>, decltype(cmp)> queue(cmp);
+	std::priority_queue<std::vector<BitPos>, std::vector<std::vector<BitPos>>, GroterePadKosten> queue;
+	std::vector<BitPos> path;
+	std::map<long long int, int> fixed;
+	std::unordered_set<unsigned long long int> visitedOnGrid;
+	BitPos start = field.startKeyBitPos;
+	if (debugMode)
+	{
+		std::cout << "Start : " << ToBin(start.pos, 64) << '\n';
+		std::cout << "Finish: " << ToBin(field.fullKeyring, 64) << '\n';
+	}
+	while ((unsigned int)((start.pos << 32) >> 32) != field.fullKeyring)
+	{
+		if (debugMode)
+		{
+			std::cout << "\nNew start BitPosition in Dijkstra algo: \n";
+			std::cout << "------->" << ToBin(start.pos, 64) << ", n=" << start.nSteps << '\n';
+		}
+		if (fixed.find(start.pos) == fixed.end())
+		{
+			fixed[start.pos] = start.nSteps;
+			visitedOnGrid.clear();
+			std::vector<BitPos> nborKeys = GetNeighboringKeys(start, field, visitedOnGrid);
+			if (debugMode)
+			{
+				std::cout << "All key neighbor BitPositions: " << '\n';
+				for (BitPos n : nborKeys)
+				{
+					std::cout << "------->" << ToBin(n.pos, 64) << ", n=" << n.nSteps << '\n';
+				}
+			}
+			for (BitPos n : nborKeys)
+			{
+				//std::cout << ToBin(n.pos, 64) << '\n';
+				if (fixed.find(n.pos) == fixed.end())
+				{
+					path.push_back(n);
+					queue.push(path);
+					path.erase(path.end() - 1);
+				}
+			}
+		}
+		if (queue.empty())
+		{
+			return {};
+		}
+		path = queue.top(); queue.pop();
+		if (debugMode)
+		{
+			std::cout << "Path vector taken from top of priority queue:\n";
+			for (BitPos n : path)
+			{
+				std::cout << "------->" << ToBin(n.pos, 64) << ", n=" << n.nSteps << '\n';
+			}
+		}
+		start = path[path.size() - 1];
+	}
+	return path;
+}
+
 
 int main()
 {
@@ -350,15 +242,31 @@ int main()
 	float dt = 0.0f;
 	Field field;
 	LoadField("field.txt", field);
-	std::cout << "Load time: " << ft.Mark() << '\n';
+	//std::unordered_set<unsigned long long int> visited;
+	
+	std::vector<BitPos> path = FindShortestPath(field, true);
 
+	
+	//std::vector<BitPos> newKeys = GetNeighboringKeys(field.startKeyBitPos, field, visited);
+	
+
+
+
+
+
+
+
+
+
+
+	
+	//std::cout << "Load time: " << ft.Mark() << '\n';
 	//std::pair<int,std::string> result = mazeBFS(field);
 	//std::cout << "METHOD 1: Number of steps to collect all keys: " << result.first<<", with path "<<result.second ;
 	//std::cout << "\nExecution time: " << ft.Mark() << '\n';
-	
-	std::pair<unsigned short, std::string> result2 = mazeBFS_(field);
-	std::cout << "\nMETHOD 2: Number of steps to collect all keys: " << result2.first<<", with path "<<result2.second;
-	std::cout << "\nExecution time: " << ft.Mark() << '\n';
+	//std::pair<unsigned short, std::string> result2 = mazeBFS_(field);
+	//std::cout << "\nMETHOD 2: Number of steps to collect all keys: " << result2.first<<", with path "<<result2.second;
+	//std::cout << "\nExecution time: " << ft.Mark() << '\n';
 
 	std::cin.get();
 	return 0;
