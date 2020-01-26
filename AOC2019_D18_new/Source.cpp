@@ -49,7 +49,7 @@ void LoadField(const std::string filename, Field& field)
 	field.startKeyBitPos = { (field.startGridBitPos.pos ) , 0 };
 	return;
 }
-std::vector<BitPos> GetNeighbors(BitPos& currBitPos, const Field& field, std::unordered_set<unsigned long long int>& visited)
+std::vector<BitPos> GetNeighbors(BitPos& currBitPos, const Field& field)
 {
 	static std::unordered_map<unsigned short, std::vector<unsigned short>> nMap;
 	unsigned short posIndex = unsigned short(currBitPos.pos >> 32);
@@ -93,26 +93,30 @@ std::vector<BitPos> GetNeighbors(BitPos& currBitPos, const Field& field, std::un
 				}
 				unsigned long long int newBitPos = nbor;
 				newBitPos = (newBitPos << 32) | keys;
-				if (visited.find(newBitPos) == visited.end()) returnVec.push_back({ newBitPos, (unsigned short)(currBitPos.nSteps+1)}); // spawn
+				returnVec.push_back({ newBitPos, (unsigned short)(currBitPos.nSteps+1)}); // spawn
 			}
 		}
 	}
 	return returnVec;
 }
-std::vector<BitPos> GetNeighboringKeys(BitPos& startKey, const Field& field, std::unordered_set<unsigned long long int>& visited)
+std::vector<BitPos> GetNeighboringKeys(BitPos& startKey, const Field& field)
 {
+	static std::map<unsigned long long int, std::vector<BitPos>> cache;
+	if (cache.find(startKey.pos) != cache.end())
+	{
+		std::cout << "cache collision.";
+	}
 	std::queue<BitPos> queue;
 	queue.push(startKey);
+	std::unordered_set<unsigned long long int> visited;
 	visited.emplace(startKey.pos);
 	std::vector<BitPos> returnVec;
 	while (!queue.empty())
 	{
 		BitPos currKey = queue.front(); queue.pop();
-		//std::cout << "Currrent position under evaluation (neighbor call is next):\n"; Print(currP, field);
-		auto neighbors = GetNeighbors(currKey, field, visited);
+		auto neighbors = GetNeighbors(currKey, field);
 		for (BitPos newBitPos : neighbors)
 		{
-			//Print(p,field);
 			if (visited.find(newBitPos.pos) == visited.end())
 			{
 				if ( (newBitPos.pos<<32)>>32 != (startKey.pos<<32)>>32 )
@@ -120,19 +124,17 @@ std::vector<BitPos> GetNeighboringKeys(BitPos& startKey, const Field& field, std
 
 					char newkey = field.charVec[(unsigned short)(newBitPos.pos>>32)];
 					std::vector<char> newpath = newBitPos.path; newpath.push_back(newkey);
-					//newBitPos.pos <<= 32; newBitPos.pos >>= 32;
-					//newBitPos.pos |= (unsigned long long int(0b1) << (newkey - 'a')) << 32;
 					returnVec.push_back({ newBitPos.pos,newBitPos.nSteps,newpath});
 				}
 				else
 				{
 					queue.push(newBitPos);
 					visited.emplace(newBitPos.pos);
-					//visited.emplace(newBitPos.pos | ((long long int(newBitPos.nSteps)) << 48));
 				}
 			}
 		}
 	}
+	cache[startKey.pos] = returnVec;
 	return returnVec;
 }
 std::pair<unsigned short, std::string> mazeBFS_(const Field& field)
@@ -144,7 +146,7 @@ std::pair<unsigned short, std::string> mazeBFS_(const Field& field)
 	while (!queue.empty())
 	{
 		BitPos currBitPos = queue.front(); queue.pop();
-		auto neighbors = GetNeighbors(currBitPos, field, visited);
+		auto neighbors = GetNeighbors(currBitPos, field);
 		for (BitPos newBitPos : neighbors)
 		{
 			if (visited.find(newBitPos.pos) == visited.end())
@@ -174,12 +176,9 @@ struct GroterePadKosten
 };
 std::vector<BitPos> FindShortestPath(Field& field,bool debugMode)
 {
-	//auto cmp = [](std::vector<BitPos> left, std::vector<BitPos> right) {return left.back().nSteps > right.back().nSteps; };
-	//std::priority_queue<std::vector<BitPos>, std::vector<std::vector<BitPos>>, decltype(cmp)> queue(cmp);
 	std::priority_queue<std::vector<BitPos>, std::vector<std::vector<BitPos>>, GroterePadKosten> queue;
 	std::vector<BitPos> path;
 	std::map<long long int, int> fixed;
-	std::unordered_set<unsigned long long int> visitedOnGrid;
 	BitPos start = field.startKeyBitPos;
 	if (debugMode)
 	{
@@ -196,8 +195,7 @@ std::vector<BitPos> FindShortestPath(Field& field,bool debugMode)
 		if (fixed.find(start.pos) == fixed.end())
 		{
 			fixed[start.pos] = start.nSteps;
-			visitedOnGrid.clear();
-			std::vector<BitPos> nborKeys = GetNeighboringKeys(start, field, visitedOnGrid);
+			std::vector<BitPos> nborKeys = GetNeighboringKeys(start, field);
 			if (debugMode)
 			{
 				std::cout << "All key neighbor BitPositions: " << '\n';
@@ -208,7 +206,6 @@ std::vector<BitPos> FindShortestPath(Field& field,bool debugMode)
 			}
 			for (BitPos n : nborKeys)
 			{
-				//std::cout << ToBin(n.pos, 64) << '\n';
 				if (fixed.find(n.pos) == fixed.end())
 				{
 					path.push_back(n);
@@ -232,6 +229,7 @@ std::vector<BitPos> FindShortestPath(Field& field,bool debugMode)
 		}
 		start = path[path.size() - 1];
 	}
+
 	return path;
 }
 
@@ -242,31 +240,19 @@ int main()
 	float dt = 0.0f;
 	Field field;
 	LoadField("field.txt", field);
-	//std::unordered_set<unsigned long long int> visited;
 	
-	std::vector<BitPos> path = FindShortestPath(field, true);
+	std::vector<BitPos> path = FindShortestPath(field, false);
+	std::cout << "\nMETHOD 1: Number of steps to collect all keys: " << path.back().nSteps << ", with path " ;
+	for (auto v : path) 
+	{ 
+		std::cout << v.path[0]; 
+	}
+	std::cout << "\nExecution time: " << ft.Mark() << '\n';
 
-	
-	//std::vector<BitPos> newKeys = GetNeighboringKeys(field.startKeyBitPos, field, visited);
-	
-
-
-
-
-
-
-
-
-
-
-	
-	//std::cout << "Load time: " << ft.Mark() << '\n';
-	//std::pair<int,std::string> result = mazeBFS(field);
-	//std::cout << "METHOD 1: Number of steps to collect all keys: " << result.first<<", with path "<<result.second ;
-	//std::cout << "\nExecution time: " << ft.Mark() << '\n';
-	//std::pair<unsigned short, std::string> result2 = mazeBFS_(field);
-	//std::cout << "\nMETHOD 2: Number of steps to collect all keys: " << result2.first<<", with path "<<result2.second;
-	//std::cout << "\nExecution time: " << ft.Mark() << '\n';
+		
+	std::pair<unsigned short, std::string> result2 = mazeBFS_(field);
+	std::cout << "\nMETHOD 2: Number of steps to collect all keys: " << result2.first<<", with path "<<result2.second;
+	std::cout << "\nExecution time: " << ft.Mark() << '\n';
 
 	std::cin.get();
 	return 0;
