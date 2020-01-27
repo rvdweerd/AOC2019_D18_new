@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <chrono>
 
+#define ULL unsigned long long int
 class FrameTimer
 {
 public:
@@ -48,13 +49,13 @@ struct Field
 	int fieldWidth = 0;
 	int fieldHeight = 0;
 	int nKeys = 0;
-	unsigned int fullKeyring = 0;
+	int fullKeyring = 0;
 	std::string allKeys;
 	std::vector<char> charVec;
 	unsigned short startIndex = 0;
 	BitPos startGridBitPos;
 	BitPos startKeyBitPos;
-	//Pawn startPos;
+	std::map<char, unsigned short> startIndices;
 };
 template <typename E>
 std::string ToBin(E n, int min_digits = 0)
