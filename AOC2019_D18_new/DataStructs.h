@@ -33,7 +33,6 @@ struct BitPos
 {
 	unsigned long long int pos = 0;
 	unsigned short nSteps = 0;
-	std::vector<char> path;
 	friend bool operator==(const BitPos& p1, const BitPos& p2)
 	{
 		return (p1.pos == p2.pos);
@@ -50,10 +49,7 @@ struct Field
 	int fieldHeight = 0;
 	int nKeys = 0;
 	int fullKeyring = 0;
-	std::string allKeys;
 	std::vector<char> charVec;
-	unsigned short startIndex = 0;
-	BitPos startGridBitPos;
 	BitPos startKeyBitPos;
 	std::map<char, unsigned short> startIndices;
 };
