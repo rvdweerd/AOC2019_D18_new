@@ -33,6 +33,7 @@ struct BitPos
 {
 	unsigned long long int pos = 0;
 	unsigned short nSteps = 0;
+	unsigned short lastPOIQuadrant = 0; // NW = 0, NE = 1, SW = 2, SE = 3
 	friend bool operator==(const BitPos& p1, const BitPos& p2)
 	{
 		return (p1.pos == p2.pos);
@@ -55,6 +56,7 @@ struct Field
 	std::map<char, std::pair<unsigned short, unsigned short>> startIndices;
 	std::vector<ULL> bitErasor_thisKeyPos;
 	std::vector<ULL> bitErasor_otherKeysPos;
+	std::vector<ULL> bitErasor_otherKeysPosAndKeyRing;
 };
 template <typename E>
 std::string ToBin(E n, int min_digits = 0)
@@ -90,7 +92,7 @@ void PrintBin(ULL bitpos)
 }
 void PrintBin(BitPos bitpos)
 {
-	std::cout << ToBin(bitpos.pos, 64) << ", n=" << bitpos.nSteps << ", [" << char(bitpos.pos >> (7u * 8u)) << char(bitpos.pos << 8u >> (7u * 8u)) << char(bitpos.pos << 16u >> (7u * 8u)) << char(bitpos.pos << 24u >> (7u * 8u)) << "]\n";
+	std::cout << ToBin(bitpos.pos, 64) << ", n=" << bitpos.nSteps << ", [" << char(bitpos.pos >> (7u * 8u)) << char(bitpos.pos << 8u >> (7u * 8u)) << char(bitpos.pos << 16u >> (7u * 8u)) << char(bitpos.pos << 24u >> (7u * 8u)) << "], Q="<<bitpos.lastPOIQuadrant<<'\n';
 }
 
 bool IsKey(char c)
