@@ -5,7 +5,6 @@ void LoadField(const std::string filename, Field& field)
 {
 	// Creat vector of useful bitmasks
 	//ULL full = (ULL)std::numeric_limits<unsigned int>::max();
-
 	for (unsigned short i = 0; i < 4; i++)
 	{
 		ULL erasor = std::numeric_limits<unsigned char>::max();
@@ -79,14 +78,12 @@ void LoadField(const std::string filename, Field& field)
 	{
 		field.startKeyBitPos.pos = field.startKeyBitPos.pos | (ULL(i) << (32 + (i - '1') * 8)); // compose startstate in bit coding [char=@_Q3].[char=@_Q2].[char=@_Q1].[char=@_Q0].[int=keyring]
 	}
-	//std::cout << "Start position in bitcode: \n" << ToBin(field.startKeyBitPos.pos, 64) << '\n';
 	return;
 }
 std::vector<unsigned short> GetAdjacentCells(const unsigned short posIndex, Field& field)
 {
 	static std::unordered_map<unsigned short, std::vector<unsigned short>> nborCellsMap;
 	std::vector<unsigned short> outputVec;
-	//auto itNeighbors = nborCellsMap[posIndex];
 	if (nborCellsMap.find(posIndex) == nborCellsMap.end())
 	{
 		if (posIndex % field.fieldWidth != 0)
@@ -147,15 +144,16 @@ std::vector<std::pair<ULL, unsigned short>> GetNeighboringPOIs(const ULL startKe
 	}
 	return nborPOIsMap[startKey];
 }
-std::vector<BitPos> NewBitPos(const BitPos startBitPos, Field& field,int& count)
+std::vector<BitPos> NewBitPos(const BitPos& startBitPos, Field& field,int& count)
 {
-	ULL startKeyring = startBitPos.pos << 32 >> 32;
+	static int cache0Used_count = 0;
+	static int cache0NotUsed_count = 0;
 	std::vector<BitPos> returnVec;
+	ULL startKeyring = startBitPos.pos << 32 >> 32;
 	std::vector<std::pair<ULL, unsigned short>> borPOIs = GetNeighboringPOIs(startBitPos.pos >> 32, field);
-	//count++;
 	for (std::pair<ULL, unsigned short> POI : borPOIs)
 	{
-	
+
 		if (IsKey((char)POI.first))
 		{
 			unsigned short newSteps = startBitPos.nSteps + POI.second;
@@ -166,11 +164,33 @@ std::vector<BitPos> NewBitPos(const BitPos startBitPos, Field& field,int& count)
 			if (startKeyring & (ULL(0b1) << (POI.first - ULL('A')))) // You have the key to the door
 			{
 				unsigned short newSteps = startBitPos.nSteps + POI.second;
-				returnVec.push_back({ (POI.first << 32) | startKeyring  , newSteps ,startBitPos.lastPOIQuadrant});
+				returnVec.push_back({ (POI.first << 32) | startKeyring  , newSteps ,startBitPos.lastPOIQuadrant });
 			}
 		}
 	}
 	return returnVec; // a vector BitPositions for nearest reachable [doors that you can open] or [keys]
+}
+std::vector<BitPos> NewBitPos4D(const BitPos& startBitPos, Field& field, int& count)
+{
+	std::vector<BitPos> returnVec;
+	{
+		for (unsigned short i = 0; i < field.nPawns; i++)
+		{
+			ULL nakedStartPos = startBitPos.pos & field.bitErasor_thisKeyPos[i];
+			ULL currKey = (startBitPos.pos & field.bitErasor_otherKeysPosAndKeyRing[i]) >> (i * 8u);
+			ULL currKeyRing = startBitPos.pos << 32u >> 32u;
+			std::vector<BitPos> newBitPosInQuadrant = NewBitPos({ currKey | currKeyRing,startBitPos.nSteps,i }, field, count);
+			for (auto e : newBitPosInQuadrant)
+			{
+				ULL newKey = e.pos >> 32u << (32u + i * 8u);
+				ULL newKeyRing = e.pos << 32u >> 32u;
+				BitPos newbitpos = { nakedStartPos | newKey | newKeyRing , e.nSteps , e.lastPOIQuadrant };
+				returnVec.push_back(newbitpos);
+				count++;
+			}
+		}
+		return returnVec;
+	}
 }
 struct GreaterPathCost
 {
@@ -183,42 +203,16 @@ std::vector<BitPos> FindShortestPath(Field& field, bool debugMode,int& count)
 {
 	std::priority_queue<std::vector<BitPos>, std::vector<std::vector<BitPos>>, GreaterPathCost> queue;
 	std::vector<BitPos> path;
-	std::map<ULL, unsigned short> fixedPerQuadrant;
 	std::map<ULL, unsigned short> fixedComposite;
 	BitPos start = field.startKeyBitPos;
-	//if (debugMode) { std::cout << "Startpos: \n"; PrintBin(start); }
+
 	while (start.pos << 32 >> 32 != field.fullKeyring)
 	{
+		if (debugMode) { std::cout << "Startpos: \n"; PrintBin(start); }
 		if (fixedComposite.find(start.pos) == fixedComposite.end())
 		{
 			fixedComposite.insert({ start.pos , start.nSteps });
-			std::vector<BitPos> newBitPos;
-			
-			for (unsigned short i = 0; i < field.nPawns; i++)
-			{
-				ULL nakedStartPos = start.pos & field.bitErasor_thisKeyPos[i];
-				//if (debugMode) { std::cout << "nakedStartPos:\n"; PrintBin(nakedStartPos); }
-				ULL currKey = start.pos & field.bitErasor_otherKeysPosAndKeyRing[i];
-				currKey >>= i * 8u;
-				//if (debugMode) { std::cout << "currKey:\n"; PrintBin(currKey); }
-				ULL currKeyRing = start.pos << 32u >> 32u;
-				//if (debugMode) { std::cout << "currKeyRing:\n"; PrintBin(currKeyRing); }
-				std::vector<BitPos> newBitPosInQuadrant = NewBitPos({currKey|currKeyRing,start.nSteps,i}, field, count);
-				for (auto e : newBitPosInQuadrant)
-				{
-					//if (debugMode) { std::cout << "New bitpos:\n"; PrintBin(e); }
-					if (fixedPerQuadrant.find(e.pos) == fixedPerQuadrant.end())
-					{
-						ULL newKey = e.pos >> 32u << (32u + i*8u);
-						ULL newKeyRing = e.pos << 32u >> 32u;
-						BitPos newbitpos = { nakedStartPos | newKey | newKeyRing , e.nSteps , e.lastPOIQuadrant };
-						//if (debugMode) { std::cout << "pushed newbitpos:\n"; PrintBin(newbitpos); }
-						newBitPos.push_back(newbitpos);
-						count++;
-					}
-				}
-			}
-			if (debugMode) { std::cout << "New bitpositions:\n"; for (auto e : newBitPos) { PrintBin(e); } }
+			std::vector<BitPos> newBitPos = NewBitPos4D(start,field,count);
 			for (BitPos p : newBitPos)
 			{
 				if (fixedComposite.find(p.pos) == fixedComposite.end())
@@ -243,18 +237,14 @@ int main()
 {
 	FrameTimer ft;
 	float dt = 0.0f;
+	int count = 0;
+	bool debugMode = false;
 	Field field;
 	LoadField("field.txt", field);
 	float loadTime = ft.Mark();
-
-	int count = 0;
-	std::vector<BitPos> path = FindShortestPath(field,false,count);
-	std::cout << "\nMETHOD 1: Number of steps to collect all keys: " << path.back().nSteps << ", with path " ;
-	for (auto v : path) 
-	{ 
-		char ch = char((v.pos << ((3u - v.lastPOIQuadrant) * 8u)) >> (7u * 8u));
-		if (ch>'Z') std::cout << ch;
-	}
+		
+	std::vector<BitPos> path = FindShortestPath(field, debugMode, count);
+	std::cout << "\nMETHOD 1: Number of steps to collect all keys: " << path.back().nSteps << ", with path " ; PrintPath(path);
 	std::cout << "\nLoad time: "<<loadTime<<", Execution time: " << ft.Mark() << '\n';
 	std::cout << "\nDoor/key positions visited: " << count << '\n';
 

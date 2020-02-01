@@ -94,7 +94,14 @@ void PrintBin(BitPos bitpos)
 {
 	std::cout << ToBin(bitpos.pos, 64) << ", n=" << bitpos.nSteps << ", [" << char(bitpos.pos >> (7u * 8u)) << char(bitpos.pos << 8u >> (7u * 8u)) << char(bitpos.pos << 16u >> (7u * 8u)) << char(bitpos.pos << 24u >> (7u * 8u)) << "], Q="<<bitpos.lastPOIQuadrant<<'\n';
 }
-
+void PrintPath(const std::vector<BitPos>& path)
+{
+	for (auto v : path)
+	{
+		char ch = char((v.pos << ((3u - v.lastPOIQuadrant) * 8u)) >> (7u * 8u));
+		if (ch > 'Z') std::cout << ch;
+	}
+}
 bool IsKey(char c)
 {
 	return (c > 96 && c <= 122);
