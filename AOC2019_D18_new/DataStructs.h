@@ -45,13 +45,16 @@ struct BitPos
 struct Field
 {
 	int fieldID = 0;
-	int fieldWidth = 0;
+	int fieldWidth = std::numeric_limits<int>::max();
 	int fieldHeight = 0;
 	int nKeys = 0;
+	unsigned int nPawns = 0;
 	int fullKeyring = 0;
 	std::vector<char> charVec;
-	BitPos startKeyBitPos;
-	std::map<char, unsigned short> startIndices;
+	BitPos startKeyBitPos = { 0,0 };
+	std::map<char, std::pair<unsigned short, unsigned short>> startIndices;
+	std::vector<ULL> bitErasor_thisKeyPos;
+	std::vector<ULL> bitErasor_otherKeysPos;
 };
 template <typename E>
 std::string ToBin(E n, int min_digits = 0)
@@ -66,7 +69,7 @@ std::string ToBin(E n, int min_digits = 0)
 	bin_str = bin_str.substr(1,bin_str.size()-1);
 	return bin_str;
 }
-void Print(std::queue<unsigned long long int> queue, Field field)
+void PrintQueue(std::queue<unsigned long long int> queue, Field field)
 {
 	while (!queue.empty())
 	{
@@ -81,6 +84,15 @@ void Print(std::queue<unsigned long long int> queue, Field field)
 		if (i != 0 && ((i + 1) % (field.fieldWidth) == 0)) std::cout << '\n';
 	}
 }
+void PrintBin(ULL bitpos)
+{
+	std::cout << ToBin(bitpos, 64) << ",      [" << char(bitpos >> (7u * 8u)) << char(bitpos << 8u >> (7u * 8u)) << char(bitpos << 16u >> (7u * 8u)) << char(bitpos << 24u >> (7u * 8u)) << "]\n";
+}
+void PrintBin(BitPos bitpos)
+{
+	std::cout << ToBin(bitpos.pos, 64) << ", n=" << bitpos.nSteps << ", [" << char(bitpos.pos >> (7u * 8u)) << char(bitpos.pos << 8u >> (7u * 8u)) << char(bitpos.pos << 16u >> (7u * 8u)) << char(bitpos.pos << 24u >> (7u * 8u)) << "]\n";
+}
+
 bool IsKey(char c)
 {
 	return (c > 96 && c <= 122);

@@ -3,40 +3,68 @@
 
 void LoadField(const std::string filename, Field& field)
 {
+	// Creat vector of useful bitmasks
+	//ULL full = (ULL)std::numeric_limits<unsigned int>::max();
+
+	for (unsigned short i = 0; i < 4; i++)
+	{
+		ULL erasor = std::numeric_limits<unsigned char>::max();
+		erasor <<= (8u * i + 32u);
+		//erasor ^= erasor;
+		field.bitErasor_otherKeysPos.push_back(erasor | std::numeric_limits<size_t>::max());
+		field.bitErasor_thisKeyPos.push_back(~erasor);
+	}
+	for (auto e : field.bitErasor_thisKeyPos)
+	{
+		std::cout << ToBin(e, 64) << '\n';
+	}
+	for (auto e : field.bitErasor_otherKeysPos)
+	{
+		std::cout << ToBin(e, 64) << '\n';
+	}
 	std::string allKeys;
 	std::ifstream in(filename);
 	bool fieldWidthSet = false;
+	char nStartPositions = '1';
 	while (!in.eof())
 	{
 		char ch;
 		std::string str;
-		int i = 0;
+		int fieldIndex = 0;
 		for (ch = in.get(); !in.eof(); ch = in.get())
 		{
-			if (ch == '\n' )
+			if (ch == '\n')
 			{
 				if (!fieldWidthSet)
 				{
-					field.fieldWidth = i;
+					field.fieldWidth = fieldIndex;
 					fieldWidthSet = true;
 				}
 			}
 			else
 			{
+				int x = fieldIndex % field.fieldWidth;
+				int y = fieldIndex / field.fieldWidth;
+				unsigned short Quadrant = 1;
+				if (x > (field.fieldWidth / 2) && y < (field.fieldHeight / 2)) Quadrant = 2;
+				if (x < (field.fieldWidth / 2) && y >(field.fieldHeight / 2)) Quadrant = 3;
+				if (x > (field.fieldWidth / 2) && y > (field.fieldHeight / 2)) Quadrant = 4;
+
 				if (IsKey(ch))
 				{
 					allKeys += ch;
 				}
 				else if (ch == '@')
 				{
-					field.startIndices[(ULL)ch] = (unsigned short)i;
+					field.startIndices[(ULL)(nStartPositions++)] = { (unsigned short)fieldIndex, Quadrant };
+					field.nPawns++;
 				}
 				if (IsKey(ch) || IsDoor(ch))
 				{
-					field.startIndices[(ULL)ch] = (unsigned short)i;
+					field.startIndices[(ULL)ch] = { (unsigned short)fieldIndex, Quadrant };
 				}
 				field.charVec.push_back(ch);
-				i++;
+				fieldIndex++;
 			}
 		}
 	}
@@ -47,7 +75,11 @@ void LoadField(const std::string filename, Field& field)
 	{
 		field.fullKeyring |= (0b1 << (c - 'a'));
 	}
-	field.startKeyBitPos = { ULL('@')<<32 , 0 };
+	for (char i = '1'; i < nStartPositions; i++)
+	{
+		field.startKeyBitPos.pos = field.startKeyBitPos.pos | (ULL(i) << (32 + (i - '1') * 8)); // compose startstate in bit coding [char=@_Q4].[char=@_Q3].[char=@_Q3].[char=@_Q1].[int=keyring]
+	}
+	std::cout << "Start position in bitcode: \n" << ToBin(field.startKeyBitPos.pos, 64) << '\n';
 	return;
 }
 std::vector<unsigned short> GetAdjacentCells(const unsigned short posIndex, Field& field)
@@ -84,7 +116,7 @@ std::vector<std::pair<ULL, unsigned short>> GetNeighboringPOIs(const ULL startKe
 	std::vector<std::pair<ULL, unsigned short>> outputVec;
 	if (nborPOIsMap.find(startKey) == nborPOIsMap.end())
 	{
-		unsigned short startIndex = field.startIndices[(char)startKey];
+		unsigned short startIndex = field.startIndices[(char)startKey].first;
 		std::queue<std::pair<unsigned short,unsigned short>> queue;
 		queue.push({ startIndex,0 });
 		std::unordered_set<unsigned short> visited;
@@ -117,33 +149,27 @@ std::vector<std::pair<ULL, unsigned short>> GetNeighboringPOIs(const ULL startKe
 }
 std::vector<BitPos> NewBitPos(const BitPos startBitPos, Field& field,int& count)
 {
-	static std::unordered_set<ULL> set;
-	if (set.find(startBitPos.pos) == set.end())
+	ULL startKeyring = startBitPos.pos << 32 >> 32;
+	std::vector<BitPos> returnVec;
+	std::vector<std::pair<ULL, unsigned short>> borPOIs = GetNeighboringPOIs(startBitPos.pos >> 32, field);
+	count++;
+	for (std::pair<ULL, unsigned short> POI : borPOIs)
 	{
-		ULL startKeyring = startBitPos.pos << 32 >> 32;
-		std::vector<BitPos> returnVec;
-		std::vector<std::pair<ULL, unsigned short>> borPOIs = GetNeighboringPOIs(startBitPos.pos >> 32, field);
-		count++;
-		for (std::pair<ULL, unsigned short> POI : borPOIs)
+		if (IsKey((char)POI.first))
 		{
-			if (IsKey((char)POI.first))
+			unsigned short newSteps = startBitPos.nSteps + POI.second;
+			returnVec.push_back({ (POI.first << 32) | startKeyring | (ULL(0b1) << (POI.first - ULL('a'))) , newSteps });
+		}
+		else // is Door
+		{
+			if (startKeyring & (ULL(0b1) << (POI.first - ULL('A')))) // You have the key to the door
 			{
 				unsigned short newSteps = startBitPos.nSteps + POI.second;
-				returnVec.push_back({ (POI.first << 32) | startKeyring | (ULL(0b1) << (POI.first - ULL('a'))) , newSteps });
-			}
-			else // is Door
-			{
-				if (startKeyring & (ULL(0b1) << (POI.first - ULL('A')))) // You have the key to the door
-				{
-					unsigned short newSteps = startBitPos.nSteps + POI.second;
-					returnVec.push_back({ (POI.first << 32) | startKeyring  , newSteps });
-				}
+				returnVec.push_back({ (POI.first << 32) | startKeyring  , newSteps });
 			}
 		}
-		set.insert(startBitPos.pos);
-		return returnVec; // a vector BitPositions for nearest reachable [doors that you can open] or [keys]
 	}
-	return {};
+	return returnVec; // a vector BitPositions for nearest reachable [doors that you can open] or [keys]
 }
 struct GreaterPathCost
 {
@@ -158,7 +184,6 @@ std::vector<BitPos> FindShortestPath(Field& field, bool debugMode,int& count)
 	std::vector<BitPos> path;
 	std::map<ULL, unsigned short> fixed;
 	BitPos start = field.startKeyBitPos;
-
 	while (start.pos << 32 >> 32 != field.fullKeyring)
 	{
 		if (fixed.find(start.pos) == fixed.end())
